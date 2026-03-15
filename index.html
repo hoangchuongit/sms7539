@@ -2,27 +2,102 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>SMS7539 Viewer</title>
     <link rel="stylesheet" href="style.css" />
   </head>
-
   <body>
-    <h2>SMS7539 API Viewer</h2>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Dashboard</p>
+          <h1>SMS7539 Viewer</h1>
+          <p class="subtitle">
+            Chọn máy, tự điền API key và bấm gửi để lấy dữ liệu.
+          </p>
+        </div>
+      </header>
 
-    <div class="box">
-      <label>API Key</label>
-      <input
-        id="apikey"
-        type="text"
-        value="1c93e27bb1264f2abd53a1b908b055a6"
-        placeholder="Nhập x-api-key"
-        style="width: 380px"
-      />
+      <main class="content">
+        <section class="card control-card">
+          <h2 class="section-title">Chọn nhanh API key</h2>
 
-      <button onclick="fetchData()">Fetch Data</button>
+          <div class="preset-grid">
+            <button
+              class="preset-btn"
+              type="button"
+              onclick="setApiKey('1c93e27bb1264f2abd53a1b908b055a6', 'Chuong PC')"
+            >
+              <span class="preset-name">Chuong's PC</span>
+              <span class="preset-key">1c93...55a6</span>
+            </button>
+
+            <button
+              class="preset-btn"
+              type="button"
+              onclick="setApiKey('96ef7f2a9f80448d87e8cb1efe91eee0', 'Ninh PC')"
+            >
+              <span class="preset-name">Ninh's PC</span>
+              <span class="preset-key">96ef...eee0</span>
+            </button>
+          </div>
+
+          <div class="form-group">
+            <label for="selectedLabel">Máy đang chọn</label>
+            <input
+              id="selectedLabel"
+              type="text"
+              value="Chuong's PC"
+              readonly
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="apikey">API key</label>
+            <input
+              id="apikey"
+              type="text"
+              value="1c93e27bb1264f2abd53a1b908b055a6"
+              placeholder="Nhập x-api-key"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+
+          <div class="action-row">
+            <button
+              id="submitBtn"
+              class="primary-btn"
+              type="button"
+              onclick="fetchData()"
+            >
+              Gửi
+            </button>
+            <button class="secondary-btn" type="button" onclick="clearResult()">
+              Xóa kết quả
+            </button>
+          </div>
+
+          <p class="hint">
+            Có thể sửa tay API key nếu cần. Giao diện này tối ưu cho cả desktop
+            và mobile.
+          </p>
+        </section>
+
+        <section class="card status-card">
+          <div class="status-row">
+            <span class="status-label">Trạng thái</span>
+            <span id="statusBadge" class="status-badge idle">Sẵn sàng</span>
+          </div>
+          <p id="statusText" class="status-text">Chưa gửi request nào.</p>
+        </section>
+
+        <section id="result" class="result-wrap"></section>
+      </main>
     </div>
-
-    <div id="result"></div>
 
     <script src="script.js"></script>
   </body>
