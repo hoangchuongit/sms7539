@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SMS7539 Viewer</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <h2>SMS7539 API Viewer</h2>
+
+    <div class="box">
+      <label>API Key</label>
+      <input
+        id="apikey"
+        type="text"
+        value="1c93e27bb1264f2abd53a1b908b055a6"
+        placeholder="Nhập x-api-key"
+        style="width: 380px"
+      />
+
+      <button onclick="fetchData()">Fetch Data</button>
+    </div>
+
+    <div id="result"></div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
