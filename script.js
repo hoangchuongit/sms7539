@@ -1,9 +1,14 @@
 const API_URL = "https://luckburn.mobi/api/sms7539";
 
-function setApiKey(key, label) {
-  document.getElementById("apikey").value = key;
-  document.getElementById("selectedLabel").value = label;
-  setStatus("idle", `Đã chọn ${label}. Sẵn sàng gửi request.`);
+const EXCLUDED_TOTAL_VALUES = new Set([401, 403, 404]);
+
+function setApiPreset({ key, label, userId, ip }) {
+  document.getElementById("apikey").value = key || "";
+  document.getElementById("selectedLabel").value = label || "";
+  document.getElementById("selectedUserId").value = userId || "";
+
+  const ipText = ip ? ` (${ip})` : "";
+  setStatus("idle", `Đã chọn ${label}${ipText}. Sẵn sàng gửi request.`);
 }
 
 function clearResult() {
@@ -30,6 +35,15 @@ function formatNumber(value) {
   return value.toLocaleString("vi-VN");
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function sortAmountKeys(keys) {
   return keys.sort((a, b) => {
     const aNum = Number(a);
@@ -46,8 +60,141 @@ function sortAmountKeys(keys) {
   });
 }
 
+function parseUserIdFromSms(sms) {
+  if (typeof sms !== "string") return "";
+  const parts = sms.split("||").map((x) => x.trim()).filter(Boolean);
+  if (parts.length < 2) return "";
+  return parts[1] || "";
+}
+
+function isValidAmount(value) {
+  return typeof value === "number" && !Number.isNaN(value);
+}
+
+function calcTotalAmount(items) {
+  let total = 0;
+  for (const item of items) {
+    const value = item?.amount_tk;
+    if (isValidAmount(value) && !EXCLUDED_TOTAL_VALUES.has(value)) {
+      total += value;
+    }
+  }
+  return total;
+}
+
+function countByAmount(items) {
+  const counter = {};
+  for (const item of items) {
+    const rawVal = item?.amount_tk;
+    const key = rawVal === null ? "null" : String(rawVal);
+    counter[key] = (counter[key] || 0) + 1;
+  }
+  return counter;
+}
+
+function getTopAmountChips(counter, limit = 6) {
+  const entries = Object.entries(counter).sort((a, b) => {
+    const countDiff = b[1] - a[1];
+    if (countDiff !== 0) return countDiff;
+
+    const aNum = Number(a[0]);
+    const bNum = Number(b[0]);
+    const aIsNum = !Number.isNaN(aNum);
+    const bIsNum = !Number.isNaN(bNum);
+
+    if (aIsNum && bIsNum) return bNum - aNum;
+    return String(a[0]).localeCompare(String(b[0]), "vi");
+  });
+
+  return entries.slice(0, limit);
+}
+
+function buildAmountRows(counter) {
+  const amountKeys = sortAmountKeys(Object.keys(counter));
+
+  return amountKeys
+    .map((key) => {
+      const displayKey = key === "null" ? "null" : key;
+      return `
+        <tr>
+          <td>${escapeHtml(displayKey)}</td>
+          <td>${formatNumber(counter[key])}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function buildTopChips(counter) {
+  const topItems = getTopAmountChips(counter);
+
+  if (!topItems.length) {
+    return `<div class="empty-inline">Không có dữ liệu amount_tk.</div>`;
+  }
+
+  return topItems
+    .map(([amount, count]) => {
+      const label = amount === "null" ? "null" : amount;
+      return `
+        <span class="chip">
+          <span class="chip-amount">${escapeHtml(label)}</span>
+          <span class="chip-count">${formatNumber(count)}</span>
+        </span>
+      `;
+    })
+    .join("");
+}
+
+function buildStatsSection({
+  title,
+  subtitle,
+  objectCount,
+  totalAmount,
+  amountTypeCount,
+  topChipsHtml,
+  accentClass = ""
+}) {
+  return `
+    <section class="card stats-section ${accentClass}">
+      <div class="section-head">
+        <div>
+          <h2 class="table-head">${escapeHtml(title)}</h2>
+          <p class="section-subtitle">${escapeHtml(subtitle)}</p>
+        </div>
+      </div>
+
+      <div class="summary-grid summary-grid-2">
+        <div class="stat-card stat-card-hero">
+          <div class="stat-label">Tổng số object</div>
+          <div class="stat-value">${formatNumber(objectCount)}</div>
+        </div>
+
+        <div class="stat-card stat-card-hero">
+          <div class="stat-label">Tổng số tiền</div>
+          <div class="stat-value">${formatNumber(totalAmount)}</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Số loại amount_tk</div>
+          <div class="stat-value">${formatNumber(amountTypeCount)}</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Top amount_tk</div>
+          <div class="chip-row">
+            ${topChipsHtml}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderResult(data) {
   const resultDiv = document.getElementById("result");
+  const selectedLabel = document.getElementById("selectedLabel").value.trim();
+  const selectedUserId = document.getElementById("selectedUserId").value.trim();
+  const now = new Date().toLocaleString("vi-VN");
 
   if (!Array.isArray(data)) {
     resultDiv.innerHTML = `
@@ -58,86 +205,128 @@ function renderResult(data) {
     return;
   }
 
-  const counter = {};
+  const allItems = data.map((item) => ({
+    ...item,
+    __userId: parseUserIdFromSms(item?.sms)
+  }));
 
-  for (const item of data) {
-    const rawVal = item?.amount_tk;
-    const key = rawVal === null ? "null" : String(rawVal);
-    counter[key] = (counter[key] || 0) + 1;
-  }
+  const machineItems = allItems.filter((item) => item.__userId === selectedUserId);
 
-  const excluded = new Set([401, 403, 404]);
+  const allCounter = countByAmount(allItems);
+  const machineCounter = countByAmount(machineItems);
 
-  let totalCurrent = 0;
-  for (const item of data) {
-    const value = item?.amount_tk;
-    if (typeof value === "number" && !excluded.has(value)) {
-      totalCurrent += value;
-    }
-  }
+  const allAmountKeys = sortAmountKeys(Object.keys(allCounter));
+  const machineAmountKeys = sortAmountKeys(Object.keys(machineCounter));
 
-  const now = new Date().toLocaleString("vi-VN");
-  const amountKeys = sortAmountKeys(Object.keys(counter));
+  const allTotalAmount = calcTotalAmount(allItems);
+  const machineTotalAmount = calcTotalAmount(machineItems);
 
-  const rows = amountKeys
-    .map((key) => {
-      const displayKey = key === "null" ? "null" : key;
-      return `
-        <tr>
-          <td>${displayKey}</td>
-          <td>${formatNumber(counter[key])}</td>
-        </tr>
-      `;
-    })
-    .join("");
+  const allRows = buildAmountRows(allCounter);
+  const machineRows = buildAmountRows(machineCounter);
+
+  const allSection = buildStatsSection({
+    title: "Toàn bộ hệ thống",
+    subtitle: `Thống kê trên tất cả object API trả về tại thời điểm ${now}.`,
+    objectCount: allItems.length,
+    totalAmount: allTotalAmount,
+    amountTypeCount: allAmountKeys.length,
+    topChipsHtml: buildTopChips(allCounter)
+  });
+
+  const machineSection = buildStatsSection({
+    title: `Máy đang query: ${selectedLabel}`,
+    subtitle: `Lọc riêng theo user_id: ${selectedUserId}`,
+    objectCount: machineItems.length,
+    totalAmount: machineTotalAmount,
+    amountTypeCount: machineAmountKeys.length,
+    topChipsHtml: buildTopChips(machineCounter),
+    accentClass: "stats-section-highlight"
+  });
+
+  const machineInfoCard = `
+    <section class="card info-strip">
+      <div class="info-grid">
+        <div class="info-item">
+          <span class="info-label">Máy</span>
+          <span class="info-value">${escapeHtml(selectedLabel)}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">User ID</span>
+          <span class="info-value info-value-break">${escapeHtml(selectedUserId)}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Object khớp</span>
+          <span class="info-value">${formatNumber(machineItems.length)}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Thời điểm</span>
+          <span class="info-value">${escapeHtml(now)}</span>
+        </div>
+      </div>
+    </section>
+  `;
+
+  const tableSection = `
+    <section class="card table-card">
+      <div class="dual-table-head">
+        <div>
+          <h2 class="table-head">Chi tiết amount_tk</h2>
+          <p class="section-subtitle">
+            So sánh toàn bộ dữ liệu với phần dữ liệu thuộc máy đang query.
+          </p>
+        </div>
+      </div>
+
+      <div class="dual-table-grid">
+        <div class="subtable-card">
+          <h3 class="subtable-title">Toàn bộ hệ thống</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>amount_tk</th>
+                  <th>Số lượng</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allRows || `<tr><td colspan="2">Không có dữ liệu</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="subtable-card">
+          <h3 class="subtable-title">Riêng máy đang query</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>amount_tk</th>
+                  <th>Số lượng</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${machineRows || `<tr><td colspan="2">Không có dữ liệu khớp user_id</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
 
   resultDiv.innerHTML = `
-    <section class="card">
-      <div class="summary-grid">
-        <div class="stat-card">
-          <div class="stat-label">Số object</div>
-          <div class="stat-value">${formatNumber(data.length)}</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-label">Số loại amount_tk</div>
-          <div class="stat-value">${formatNumber(amountKeys.length)}</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-label">Tổng hiện tại</div>
-          <div class="stat-value">${formatNumber(totalCurrent)}</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-label">Thời điểm</div>
-          <div class="stat-value" style="font-size:16px;">${now}</div>
-        </div>
-      </div>
-    </section>
-
-    <section class="card table-card">
-      <h2 class="table-head">Các loại amount_tk và số lượng từng loại</h2>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>amount_tk</th>
-              <th>Số lượng</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    ${machineInfoCard}
+    ${allSection}
+    ${machineSection}
+    ${tableSection}
   `;
 }
 
 async function fetchData() {
   const apiKey = document.getElementById("apikey").value.trim();
   const selectedLabel = document.getElementById("selectedLabel").value.trim();
+  const selectedUserId = document.getElementById("selectedUserId").value.trim();
   const submitBtn = document.getElementById("submitBtn");
   const resultDiv = document.getElementById("result");
 
@@ -151,13 +340,23 @@ async function fetchData() {
     return;
   }
 
+  if (!selectedUserId) {
+    setStatus("error", "Bạn chưa chọn user_id cho máy đang query.");
+    resultDiv.innerHTML = `
+      <div class="card error-card">
+        Vui lòng chọn đúng máy để có thể lọc dữ liệu theo <code>user_id</code>.
+      </div>
+    `;
+    return;
+  }
+
   try {
     submitBtn.disabled = true;
     submitBtn.textContent = "Đang gửi...";
-    setStatus("loading", `Đang gọi API cho ${selectedLabel}...`);
-
-    console.log("Selected label:", selectedLabel);
-    console.log("Sending x-api-key:", apiKey);
+    setStatus(
+      "loading",
+      `Đang gọi API cho ${selectedLabel} và lọc theo user_id ${selectedUserId}...`
+    );
 
     const url = `${API_URL}?t=${Date.now()}`;
 
@@ -173,9 +372,6 @@ async function fetchData() {
 
     const rawText = await response.text();
 
-    console.log("HTTP status:", response.status);
-    console.log("Response preview:", rawText.slice(0, 500));
-
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${rawText || "Request failed"}`);
     }
@@ -188,11 +384,16 @@ async function fetchData() {
     }
 
     renderResult(data);
+
+    const matchedCount = Array.isArray(data)
+      ? data.filter((item) => parseUserIdFromSms(item?.sms) === selectedUserId).length
+      : 0;
+
     setStatus(
       "success",
-      `Lấy dữ liệu thành công cho ${selectedLabel}. Tổng số object: ${
+      `Lấy dữ liệu thành công cho ${selectedLabel}. Tổng object toàn bộ: ${
         Array.isArray(data) ? data.length : 0
-      }.`
+      }. Object của máy này: ${matchedCount}.`
     );
   } catch (error) {
     console.error(error);
@@ -203,20 +404,11 @@ async function fetchData() {
       <div class="card error-card">
         <strong>Không thể lấy dữ liệu.</strong><br><br>
         Chi tiết: ${escapeHtml(error.message)}<br><br>
-        Nếu bấm đổi API key nhưng dữ liệu vẫn không đổi thì thường là phía API hoặc proxy đang bỏ qua <code>x-api-key</code>.
+        Nếu đổi API key nhưng dữ liệu vẫn không đổi thì thường là phía API hoặc proxy đang bỏ qua <code>x-api-key</code>.
       </div>
     `;
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = "Gửi";
   }
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
