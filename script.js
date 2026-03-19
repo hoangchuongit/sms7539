@@ -74,6 +74,11 @@ function isValidAmount(value) {
   return typeof value === "number" && !Number.isNaN(value);
 }
 
+function shouldExcludeItem(item) {
+  const sms = typeof item?.sms === "string" ? item.sms : "";
+  return sms.includes("|| t");
+}
+
 function calcTotalAmount(items) {
   let total = 0;
   for (const item of items) {
@@ -89,6 +94,8 @@ function calcTotalAmount(items) {
 function countByAmount(items) {
   const counter = {};
   for (const item of items) {
+    if (shouldExcludeItem(item)) continue;
+
     const rawVal = item?.amount_tk;
     const key = rawVal === null ? "null" : String(rawVal);
     counter[key] = (counter[key] || 0) + 1;
@@ -209,11 +216,6 @@ function renderResult(data) {
     return;
   }
 
-  function shouldExcludeItem(item) {
-    const sms = typeof item?.sms === "string" ? item.sms : "";
-    return sms.includes("|| t");
-  }
-
   const allItems = data.map((item) => ({
     ...item,
     __userId: parseUserIdFromSms(item?.sms),
@@ -223,20 +225,17 @@ function renderResult(data) {
     (item) => item.__userId === selectedUserId,
   );
 
-  // chỉ lấy item hợp lệ để thống kê amount / tổng tiền
-  const allItemsForStats = allItems.filter((item) => !shouldExcludeItem(item));
-  const machineItemsForStats = machineItems.filter(
-    (item) => !shouldExcludeItem(item),
-  );
-
-  const allCounter = countByAmount(allItemsForStats);
-  const machineCounter = countByAmount(machineItemsForStats);
+  const allCounter = countByAmount(allItems);
+  const machineCounter = countByAmount(machineItems);
 
   const allAmountKeys = sortAmountKeys(Object.keys(allCounter));
   const machineAmountKeys = sortAmountKeys(Object.keys(machineCounter));
 
-  const allTotalAmount = calcTotalAmount(allItemsForStats);
-  const machineTotalAmount = calcTotalAmount(machineItemsForStats);
+  const allTotalAmount = calcTotalAmount(allItems);
+  const machineTotalAmount = calcTotalAmount(machineItems);
+
+  const allRows = buildAmountRows(allCounter);
+  const machineRows = buildAmountRows(machineCounter);
 
   const allSection = buildStatsSection({
     title: "Toàn bộ hệ thống",
