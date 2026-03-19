@@ -62,7 +62,10 @@ function sortAmountKeys(keys) {
 
 function parseUserIdFromSms(sms) {
   if (typeof sms !== "string") return "";
-  const parts = sms.split("||").map((x) => x.trim()).filter(Boolean);
+  const parts = sms
+    .split("||")
+    .map((x) => x.trim())
+    .filter(Boolean);
   if (parts.length < 2) return "";
   return parts[1] || "";
 }
@@ -75,6 +78,7 @@ function calcTotalAmount(items) {
   let total = 0;
   for (const item of items) {
     const value = item?.amount_tk;
+    if (item.sms.includes("|| t")) continue;
     if (isValidAmount(value) && !EXCLUDED_TOTAL_VALUES.has(value)) {
       total += value;
     }
@@ -152,7 +156,7 @@ function buildStatsSection({
   totalAmount,
   amountTypeCount,
   topChipsHtml,
-  accentClass = ""
+  accentClass = "",
 }) {
   return `
     <section class="card stats-section ${accentClass}">
@@ -207,10 +211,12 @@ function renderResult(data) {
 
   const allItems = data.map((item) => ({
     ...item,
-    __userId: parseUserIdFromSms(item?.sms)
+    __userId: parseUserIdFromSms(item?.sms),
   }));
 
-  const machineItems = allItems.filter((item) => item.__userId === selectedUserId);
+  const machineItems = allItems.filter(
+    (item) => item.__userId === selectedUserId,
+  );
 
   const allCounter = countByAmount(allItems);
   const machineCounter = countByAmount(machineItems);
@@ -230,7 +236,7 @@ function renderResult(data) {
     objectCount: allItems.length,
     totalAmount: allTotalAmount,
     amountTypeCount: allAmountKeys.length,
-    topChipsHtml: buildTopChips(allCounter)
+    topChipsHtml: buildTopChips(allCounter),
   });
 
   const machineSection = buildStatsSection({
@@ -240,7 +246,7 @@ function renderResult(data) {
     totalAmount: machineTotalAmount,
     amountTypeCount: machineAmountKeys.length,
     topChipsHtml: buildTopChips(machineCounter),
-    accentClass: "stats-section-highlight"
+    accentClass: "stats-section-highlight",
   });
 
   const machineInfoCard = `
@@ -355,7 +361,7 @@ async function fetchData() {
     submitBtn.textContent = "Đang gửi...";
     setStatus(
       "loading",
-      `Đang gọi API cho ${selectedLabel} và lọc theo user_id ${selectedUserId}...`
+      `Đang gọi API cho ${selectedLabel} và lọc theo user_id ${selectedUserId}...`,
     );
 
     const url = `${API_URL}?t=${Date.now()}`;
@@ -366,14 +372,16 @@ async function fetchData() {
       headers: {
         "x-api-key": apiKey,
         "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache"
-      }
+        Pragma: "no-cache",
+      },
     });
 
     const rawText = await response.text();
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${rawText || "Request failed"}`);
+      throw new Error(
+        `HTTP ${response.status}: ${rawText || "Request failed"}`,
+      );
     }
 
     let data;
@@ -386,14 +394,15 @@ async function fetchData() {
     renderResult(data);
 
     const matchedCount = Array.isArray(data)
-      ? data.filter((item) => parseUserIdFromSms(item?.sms) === selectedUserId).length
+      ? data.filter((item) => parseUserIdFromSms(item?.sms) === selectedUserId)
+          .length
       : 0;
 
     setStatus(
       "success",
       `Lấy dữ liệu thành công cho ${selectedLabel}. Tổng object toàn bộ: ${
         Array.isArray(data) ? data.length : 0
-      }. Object của máy này: ${matchedCount}.`
+      }. Object của máy này: ${matchedCount}.`,
     );
   } catch (error) {
     console.error(error);
