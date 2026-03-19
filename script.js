@@ -74,11 +74,6 @@ function isValidAmount(value) {
   return typeof value === "number" && !Number.isNaN(value);
 }
 
-function shouldExcludeItem(item) {
-  const sms = typeof item?.sms === "string" ? item.sms : "";
-  return sms.includes("|| t");
-}
-
 function calcTotalAmount(items) {
   let total = 0;
   for (const item of items) {
@@ -214,15 +209,10 @@ function renderResult(data) {
     return;
   }
 
-  const allItems = data.map((item) => ({
-    ...item,
-    __userId: parseUserIdFromSms(item?.sms),
-  }));
-
-  const allItems = data.map((item) => ({
-    ...item,
-    __userId: parseUserIdFromSms(item?.sms),
-  }));
+  function shouldExcludeItem(item) {
+    const sms = typeof item?.sms === "string" ? item.sms : "";
+    return sms.includes("|| t");
+  }
 
   const allItems = data.map((item) => ({
     ...item,
