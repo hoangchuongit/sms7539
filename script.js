@@ -74,11 +74,16 @@ function isValidAmount(value) {
   return typeof value === "number" && !Number.isNaN(value);
 }
 
+function shouldExcludeItem(item) {
+  const sms = typeof item?.sms === "string" ? item.sms : "";
+  return sms.includes("|| t");
+}
+
 function calcTotalAmount(items) {
   let total = 0;
   for (const item of items) {
     const value = item?.amount_tk;
-    if (item.sms.includes("|| t")) continue;
+    if (shouldExcludeItem(item)) continue;
     if (isValidAmount(value) && !EXCLUDED_TOTAL_VALUES.has(value)) {
       total += value;
     }
@@ -214,21 +219,34 @@ function renderResult(data) {
     __userId: parseUserIdFromSms(item?.sms),
   }));
 
+  const allItems = data.map((item) => ({
+    ...item,
+    __userId: parseUserIdFromSms(item?.sms),
+  }));
+
+  const allItems = data.map((item) => ({
+    ...item,
+    __userId: parseUserIdFromSms(item?.sms),
+  }));
+
   const machineItems = allItems.filter(
     (item) => item.__userId === selectedUserId,
   );
 
-  const allCounter = countByAmount(allItems);
-  const machineCounter = countByAmount(machineItems);
+  // chỉ lấy item hợp lệ để thống kê amount / tổng tiền
+  const allItemsForStats = allItems.filter((item) => !shouldExcludeItem(item));
+  const machineItemsForStats = machineItems.filter(
+    (item) => !shouldExcludeItem(item),
+  );
+
+  const allCounter = countByAmount(allItemsForStats);
+  const machineCounter = countByAmount(machineItemsForStats);
 
   const allAmountKeys = sortAmountKeys(Object.keys(allCounter));
   const machineAmountKeys = sortAmountKeys(Object.keys(machineCounter));
 
-  const allTotalAmount = calcTotalAmount(allItems);
-  const machineTotalAmount = calcTotalAmount(machineItems);
-
-  const allRows = buildAmountRows(allCounter);
-  const machineRows = buildAmountRows(machineCounter);
+  const allTotalAmount = calcTotalAmount(allItemsForStats);
+  const machineTotalAmount = calcTotalAmount(machineItemsForStats);
 
   const allSection = buildStatsSection({
     title: "Toàn bộ hệ thống",
