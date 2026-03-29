@@ -9,6 +9,7 @@ function setApiPreset({ key, label, userId, ip }) {
 
   const ipText = ip ? ` (${ip})` : "";
   setStatus("idle", `Đã chọn ${label}${ipText}. Sẵn sàng gửi request.`);
+  fetchOverview();
 }
 
 function clearResult() {
@@ -428,3 +429,224 @@ async function fetchData() {
     submitBtn.textContent = "Gửi";
   }
 }
+
+// ============================================================
+// GLOBAL OVERVIEW — Failed / Pending / Payout APIs
+// ============================================================
+
+let _prevFailedCount = null;
+let _prevExistCount = null;
+let _prevRutCount = null;
+let _autoRefreshTimer = null;
+
+function getOverviewApiKey() {
+  return (
+    document.getElementById("apikey").value.trim() ||
+    "1c93e27bb1264f2abd53a1b908b055a6"
+  );
+}
+
+async function fetchOverview() {
+  const apiKey = getOverviewApiKey();
+  const btn = document.getElementById("overviewRefreshBtn");
+  const updatedEl = document.getElementById("overviewUpdated");
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "↻ Đang tải...";
+  }
+
+  try {
+    const headers = {
+      "x-api-key": apiKey,
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      Pragma: "no-cache",
+    };
+    const t = Date.now();
+
+    const [failedRes, existRes, rutRes] = await Promise.all([
+      fetch(`${API_URL}/player-fail?t=${t}`, { headers, cache: "no-store" }),
+      fetch(`${API_URL}/exist?t=${t}`, { headers, cache: "no-store" }),
+      fetch(`${API_URL}/player-rut?t=${t}`, { headers, cache: "no-store" }),
+    ]);
+
+    const parseJson = async (res) => {
+      try {
+        return res.ok ? await res.json() : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const [failedData, existData, rutData] = await Promise.all([
+      parseJson(failedRes),
+      parseJson(existRes),
+      parseJson(rutRes),
+    ]);
+
+    renderOverviewCards(failedData, existData, rutData);
+    renderPayoutBreakdown(rutData);
+
+    if (updatedEl) {
+      updatedEl.textContent = `Cập nhật lúc: ${new Date().toLocaleString("vi-VN")}`;
+    }
+  } catch (err) {
+    if (updatedEl) {
+      updatedEl.textContent = `Lỗi tải tổng quan: ${escapeHtml(err.message)}`;
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "↻ Làm mới";
+    }
+  }
+}
+
+function renderOverviewCards(failedData, existData, rutData) {
+  const failedCount = Array.isArray(failedData) ? failedData.length : 0;
+  const existCount = Array.isArray(existData) ? existData.length : 0;
+  const rutItems = Array.isArray(rutData) ? rutData : [];
+  const rutCount = rutItems.length;
+  const rutTotal = rutItems.reduce((sum, item) => {
+    const v = item?.amount_tk;
+    return typeof v === "number" && !Number.isNaN(v) ? sum + v : sum;
+  }, 0);
+
+  const failedDelta = buildDelta(_prevFailedCount, failedCount);
+  const existDelta = buildDelta(_prevExistCount, existCount);
+  const rutDelta = buildDelta(_prevRutCount, rutCount);
+
+  _prevFailedCount = failedCount;
+  _prevExistCount = existCount;
+  _prevRutCount = rutCount;
+
+  const failedVariant = failedCount > 0 ? "metric-card--danger" : "metric-card--ok";
+  const failedSub = failedCount > 0 ? "⚠ Cần lưu ý" : "✓ Bình thường";
+
+  document.getElementById("overviewGrid").innerHTML = `
+    <div class="metric-card ${failedVariant}">
+      <div class="metric-label">Failed Players</div>
+      <div class="metric-value">${formatNumber(failedCount)}</div>
+      <div class="metric-sub">${failedSub}${failedDelta ? `<br>${failedDelta}` : ""}</div>
+    </div>
+
+    <div class="metric-card metric-card--warning">
+      <div class="metric-label">Pending — chưa gửi SMS</div>
+      <div class="metric-value">${formatNumber(existCount)}</div>
+      <div class="metric-sub">Đã đăng ký, đang chờ xử lý${existDelta ? `<br>${existDelta}` : ""}</div>
+    </div>
+
+    <div class="metric-card metric-card--success">
+      <div class="metric-label">Sẵn sàng payout</div>
+      <div class="metric-value">
+        ${formatNumber(rutCount)}<span class="metric-value-unit"> players</span>
+      </div>
+      <div class="metric-sub">Tổng tiền: <strong>${formatNumber(rutTotal)}</strong> đ${rutDelta ? `<br>${rutDelta}` : ""}</div>
+    </div>
+  `;
+}
+
+function buildDelta(prev, current) {
+  if (prev === null) return "";
+  const delta = current - prev;
+  if (delta > 0)
+    return `<span class="metric-delta metric-delta--up">▲ +${delta} so với lần trước</span>`;
+  if (delta < 0)
+    return `<span class="metric-delta metric-delta--down">▼ ${Math.abs(delta)} giảm</span>`;
+  return `<span class="metric-delta metric-delta--same">→ Không đổi</span>`;
+}
+
+function renderPayoutBreakdown(rutData) {
+  const section = document.getElementById("payoutBreakdown");
+  const content = document.getElementById("payoutBreakdownContent");
+
+  const items = Array.isArray(rutData) ? rutData : [];
+
+  if (!items.length) {
+    section.style.display = "none";
+    return;
+  }
+
+  // Group by amount_tk
+  const groups = {};
+  let totalPlayers = 0;
+  let totalAmount = 0;
+
+  for (const item of items) {
+    const amount = item?.amount_tk;
+    const key = typeof amount === "number" ? String(amount) : "null";
+    if (!groups[key]) groups[key] = { count: 0, subtotal: 0 };
+    groups[key].count++;
+    if (typeof amount === "number" && !Number.isNaN(amount)) {
+      groups[key].subtotal += amount;
+      totalAmount += amount;
+    }
+    totalPlayers++;
+  }
+
+  const keys = sortAmountKeys(Object.keys(groups));
+
+  const rows = keys
+    .map((key) => {
+      const g = groups[key];
+      const displayKey =
+        key === "null" ? "null" : formatNumber(Number(key));
+      return `
+        <tr>
+          <td>${escapeHtml(displayKey)}</td>
+          <td>${formatNumber(g.count)}</td>
+          <td>${formatNumber(g.subtotal)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  content.innerHTML = `
+    <div class="payout-hero-row">
+      <div class="payout-hero-card">
+        <div class="stat-label">Tổng players</div>
+        <div class="stat-value">${formatNumber(totalPlayers)}</div>
+      </div>
+      <div class="payout-hero-card payout-hero-card--accent">
+        <div class="stat-label">Tổng tiền có thể payout</div>
+        <div class="stat-value payout-amount-total">${formatNumber(totalAmount)} <span style="font-size:16px;font-weight:500">đ</span></div>
+      </div>
+    </div>
+    <div class="table-scroll" style="margin-top: 14px">
+      <table>
+        <thead>
+          <tr>
+            <th>Mức tiền (amount_tk)</th>
+            <th>Số players</th>
+            <th>Tổng tiền</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+          <tr class="table-total-row">
+            <td><strong>Tổng cộng</strong></td>
+            <td><strong>${formatNumber(totalPlayers)}</strong></td>
+            <td><strong>${formatNumber(totalAmount)}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  section.style.display = "";
+}
+
+function toggleAutoRefresh(enabled) {
+  if (_autoRefreshTimer) {
+    clearInterval(_autoRefreshTimer);
+    _autoRefreshTimer = null;
+  }
+  if (enabled) {
+    _autoRefreshTimer = setInterval(fetchOverview, 60_000);
+  }
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  fetchOverview();
+  fetchData();
+});

@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <title>SMS7539 Viewer</title>
+    <title>SMS7 Viewer</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -14,7 +14,7 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">Dashboard</p>
-          <h1>SMS7539 Viewer</h1>
+          <h1>SMS7 Viewer</h1>
           <p class="subtitle">
             Thống kê toàn bộ dữ liệu API và tách riêng phần của máy đang query
             dựa trên <code>user_id</code> trong trường <code>sms</code>.
@@ -23,6 +23,69 @@
       </header>
 
       <main class="content">
+        <!-- ===== GLOBAL OVERVIEW ===== -->
+        <section class="card overview-panel">
+          <div class="overview-header">
+            <div>
+              <h2 class="overview-title">Tổng quan hệ thống</h2>
+              <p class="overview-updated" id="overviewUpdated">Nhấn <strong>Làm mới</strong> hoặc chọn máy để tải dữ liệu.</p>
+            </div>
+            <div class="overview-controls">
+              <label class="auto-refresh-label">
+                <input
+                  type="checkbox"
+                  id="autoRefreshToggle"
+                  onchange="toggleAutoRefresh(this.checked)"
+                />
+                Auto 60s
+              </label>
+              <button
+                class="icon-btn"
+                id="overviewRefreshBtn"
+                type="button"
+                onclick="fetchOverview()"
+              >
+                ↻ Làm mới
+              </button>
+            </div>
+          </div>
+          <div class="overview-grid" id="overviewGrid">
+            <div class="metric-card metric-card--skeleton">
+              <div class="metric-label">Failed Players</div>
+              <div class="metric-value">—</div>
+              <div class="metric-sub">Chưa tải</div>
+            </div>
+            <div class="metric-card metric-card--skeleton">
+              <div class="metric-label">Pending (chưa SMS)</div>
+              <div class="metric-value">—</div>
+              <div class="metric-sub">Chưa tải</div>
+            </div>
+            <div class="metric-card metric-card--skeleton">
+              <div class="metric-label">Sẵn sàng payout</div>
+              <div class="metric-value">—</div>
+              <div class="metric-sub">Chưa tải</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== PAYOUT BREAKDOWN ===== -->
+        <section
+          class="card payout-breakdown"
+          id="payoutBreakdown"
+          style="display: none"
+        >
+          <div class="section-head">
+            <div>
+              <h2 class="table-head">Chi tiết payout sẵn sàng</h2>
+              <p class="section-subtitle">
+                Thống kê theo mức tiền — players đã sẵn sàng rút.
+              </p>
+            </div>
+          </div>
+          <div id="payoutBreakdownContent"></div>
+        </section>
+
+        <!-- ===== MACHINE ANALYSIS ===== -->
         <section class="card control-card">
           <h2 class="section-title">Chọn nhanh API key</h2>
 
@@ -33,13 +96,13 @@
               onclick="
                 setApiPreset({
                   key: '1c93e27bb1264f2abd53a1b908b055a6',
-                  label: 'hoangchuong1',
+                  label: 'liu1',
                   userId: 'a70bd27b-e1f4-4bd2-ad7e-7cd3bd3776e7',
                   ip: '192.168.50.187',
                 })
               "
             >
-              <span class="preset-name">hoangchuong1</span>
+              <span class="preset-name">liu1</span>
               <span class="preset-key">1c93...55a6</span>
               <span class="preset-meta">User: a70bd27b...776e7</span>
               <span class="preset-meta">IP: 192.168.50.187</span>
@@ -51,13 +114,13 @@
               onclick="
                 setApiPreset({
                   key: '96ef7f2a9f80448d87e8cb1efe91eee0',
-                  label: 'hoangchuong2',
+                  label: 'liu2',
                   userId: '3ff1c0e1-2023-4a24-9080-11f193c56a63',
                   ip: '192.168.30.47',
                 })
               "
             >
-              <span class="preset-name">hoangchuong2</span>
+              <span class="preset-name">liu2</span>
               <span class="preset-key">96ef...eee0</span>
               <span class="preset-meta">User: 3ff1c0e1...c56a6</span>
               <span class="preset-meta">IP: 192.168.30.47</span>
@@ -69,13 +132,13 @@
               onclick="
                 setApiPreset({
                   key: '3843112f32de4be68b027ad09b1ca14f',
-                  label: 'hoangchuong3',
+                  label: 'liu3',
                   userId: '89f20e70-383d-4674-a2ad-c3d78ccd2d54',
                   ip: '',
                 })
               "
             >
-              <span class="preset-name">hoangchuong3</span>
+              <span class="preset-name">liu3</span>
               <span class="preset-key">3843...a14f</span>
               <span class="preset-meta">User: 3ff1c0e1...c56a64</span>
               <span class="preset-meta">Pass: 802165502084</span>
@@ -88,7 +151,7 @@
               <input
                 id="selectedLabel"
                 type="text"
-                value="hoangchuong2"
+                value="liu1"
                 readonly
               />
             </div>
@@ -98,7 +161,7 @@
               <input
                 id="selectedUserId"
                 type="text"
-                value="3ff1c0e1-2023-4a24-9080-11f193c56a6"
+                value="a70bd27b-e1f4-4bd2-ad7e-7cd3bd3776e7"
                 readonly
               />
             </div>
@@ -109,7 +172,7 @@
             <input
               id="apikey"
               type="text"
-              value="96ef7f2a9f80448d87e8cb1efe91eee0"
+              value="1c93e27bb1264f2abd53a1b908b055a6"
               placeholder="Nhập x-api-key"
               autocomplete="off"
               spellcheck="false"
@@ -130,12 +193,13 @@
             </button>
           </div>
 
-          <p class="hint">
+          <p class=”hint”>
             Tổng số object luôn tính trên toàn bộ dữ liệu API. Khối “Máy đang
             query” sẽ lọc theo <code>user_id</code> nằm trong chuỗi
             <code>sms</code>.
           </p>
         </section>
+        <!-- end machine analysis -->
 
         <section class="card status-card">
           <div class="status-row">
